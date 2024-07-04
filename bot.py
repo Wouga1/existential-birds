@@ -221,20 +221,7 @@ def handle_attack(game: Game, bot_state: BotState, query: QueryAttack) -> Union[
                     return game.move_attack(query, candidate_attacker, candidate_target, min(3, game.state.territories[candidate_attacker].troops - 1))
 
 
-    if len(game.state.recording) < 4000:
-        # We will check if anyone attacked us in the last round.
-        new_records = game.state.recording[game.state.new_records:]
-        enemy = None
-        for record in new_records:
-            match record:
-                case MoveAttack() as r:
-                    if r.defending_territory in set(my_territories):
-                        enemy = r.move_by_player
-        
-        # We will pick the player with the weakest territory bordering us, and make them our enemy.
-        weakest_territory = min(bordering_territories, key=lambda x: game.state.territories[x].troops)
-        bot_state.enemy = game.state.territories[weakest_territory].occupier
-        
+    if len(game.state.recording) < 4000:        
         # Get all territories owned by opponents
         all_territories = [y.territory_id for y in game.state.territories.values()]
         enemy_territories = set(all_territories).difference(my_territories)
@@ -244,12 +231,6 @@ def handle_attack(game: Game, bot_state: BotState, query: QueryAttack) -> Union[
         move = attack_weakest(enemy_territories)
         if move != None:
             return move
-        
-        # Otherwise we will attack anyone most of the time.
-        if random.random() < 0.8:
-            move = attack_weakest(bordering_territories)
-            if move != None:
-                return move
 
     # In the late game, we will attack anyone adjacent to our strongest territories (hopefully our doomstack).
     else:
