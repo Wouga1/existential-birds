@@ -126,6 +126,79 @@ def handle_redeem_cards(game: Game, bot_state: BotState, query: QueryRedeemCards
     """After the claiming and placing initial troops phases are over, you can redeem any
     cards you have at the start of each turn, or after killing another player."""
 
+    def check_valid(card_set: Tuple[CardModel, CardModel, CardModel]) -> bool:
+        # Get all non-wild cards
+        not_wild = [card for card in card_set if card.symbol != "Wildcard"]
+
+        # Check if all non-wild cards have the same symbol
+        symbol = not_wild[0].symbol
+        all_same = True
+        for card in not_wild[1:]:
+            if card.symbol != symbol:
+                all_same = False
+        if all_same:
+            return True
+        
+        # Check if all non-wild cards have different symbols
+        symbols = []
+        all_different = True
+        for card in not_wild:
+            if card.symbol in symbols:
+                all_different = False
+            else:
+                symbols.append(card.symbol)
+        if all_different:
+            return True
+        
+        # If neither, return False
+        return False
+
+    def get_value_of_set(card_set: Tuple[CardModel, CardModel, CardModel]):
+        # Base value is 0
+        value = 0
+
+        territory_owned = False
+        for card in card_set:
+            # Value decreases by 2 for each wildcard (arbitrary)
+            if card.symbol == "Wildcard":
+                value -= 2
+                continue
+
+            if game.state.territories[card.territory_id].occupier == game.state.me.player_id: # type: ignore
+                if territory_owned:
+                    # Value decreases by 8 for each extra territory owned (arbitrary)
+                    value -= 9
+                else:
+                    # Value increases by 10 if a territory is owned
+                    territory_owned = True
+                    value += 10
+
+        return value
+
+    def redeem_set(cards: list[CardModel]) -> Optional[Tuple[CardModel, CardModel, CardModel]]:
+        card_count: int = len(cards)
+
+        # Return None if <3 cards
+        if card_count < 3:
+            return None
+
+        # Get all combinations of cards
+        combinations: list[Tuple[CardModel, CardModel, CardModel]] = []
+        for i in range(card_count - 2):
+            for j in range(i + 1, card_count - 1):
+                for k in range(j + 1, card_count):
+                    combinations.append((cards[i], cards[j], cards[k]))
+
+        # Remove invalid combinations
+        card_sets = [card_set for card_set in combinations if check_valid(card_set)]
+
+        # Return None if no valid combinations
+        if len(card_sets) == 0:
+            return None
+
+        # Return highest value combination
+        return max(card_sets, key=get_value_of_set)
+
     # We will always redeem the minimum number of card sets we can until the 12th card set has been redeemed.
     # This is just an arbitrary choice to try and save our cards for the late game.
 
@@ -134,7 +207,7 @@ def handle_redeem_cards(game: Game, bot_state: BotState, query: QueryRedeemCards
     cards_remaining = game.state.me.cards.copy()
 
     while len(cards_remaining) >= 5:
-        card_set = game.state.get_card_set(cards_remaining)
+        card_set = redeem_set(cards_remaining)
         # According to the pigeonhole principle, we should always be able to make a set
         # of cards if we have at least 5 cards.
         assert card_set != None
@@ -144,11 +217,11 @@ def handle_redeem_cards(game: Game, bot_state: BotState, query: QueryRedeemCards
     # Remember we can't redeem any more than the required number of card sets if 
     # we have just eliminated a player.
     if game.state.card_sets_redeemed > 12 and query.cause == "turn_started":
-        card_set = game.state.get_card_set(cards_remaining)
+        card_set = redeem_set(cards_remaining)
         while card_set != None:
             card_sets.append(card_set)
             cards_remaining = [card for card in cards_remaining if card not in card_set]
-            card_set = game.state.get_card_set(cards_remaining)
+            card_set = redeem_set(cards_remaining)
 
     return game.move_redeem_cards(query, [(x[0].card_id, x[1].card_id, x[2].card_id) for x in card_sets])
 
