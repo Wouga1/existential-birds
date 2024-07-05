@@ -26,6 +26,193 @@ from risk_shared.records.record_attack import RecordAttack
 from risk_shared.records.types.move_type import MoveType
 
 
+twodice = [[0]*6 for i in range(6)]
+threedice = [[0]*6 for i in range(6)]
+
+# get number of ways to have two dice with particular values,
+# as well as three dice where the highest 2 have particular values
+for i in range(6):
+    for j in range(6):
+        twodice[min(i,j)][max(i,j)] += 1
+        for k in range(6):
+            ordered = sorted([i,j,k])
+            threedice[ordered[1]][ordered[2]] += 1
+
+total2dice = sum(sum(arr) for arr in twodice)
+total3dice = sum(sum(arr) for arr in threedice)
+
+flawless3v2 = 0 # probability of attacker rolling 3 dice against 2 and losing no pieces
+flawless2v2 = 0 # probability of attacker rolling 2 dice against 2 and losing no pieces
+for h in range(5):
+    for i in range(h,5):
+        # prob of defender rolling rolling h and i
+        # we divide by attacker sample space now to avoid doing it repeatedly later
+        temp3v2 = float(twodice[h][i])/(total2dice*total3dice)
+        temp2v2 = float(twodice[h][i])/(total2dice*total2dice)
+        for j in range(h+1,6):
+            for k in range(i+1,6):
+                # going through all ways attacker can defeat two armies
+                # without losing anybody in the process.
+                flawless3v2 += temp3v2*threedice[j][k]
+                flawless2v2 += temp2v2*twodice[j][k]
+
+flawed3v2 = 0 # probability of attacker rolling 3v2 and each losing 1 piece
+flawed2v2 = 0 # probability of attacker rolling 2v2 and each losing 1 piece
+for h in range(5):
+    for i in range(h,6):
+        # prob of defender rolling h and i
+        # once again we factor out division of attacker sample space
+        temp3v2 = float(twodice[h][i])/(total2dice*total3dice)
+        temp2v2 = float(twodice[h][i])/(total2dice*total2dice)
+        for j in range(h+1,6):
+            for k in range(j,i+1):
+                # attacker defeats low die but loses to high die
+                flawed3v2 += temp3v2*threedice[j][k]
+                flawed2v2 += temp2v2*twodice[j][k]
+        if i==5: continue # attacker cannot beat high die
+        for j in range(h+1):
+            for k in range(i+1,6):
+                # attacker defeats high die but loses to low die
+                flawed3v2 += temp3v2*threedice[j][k]
+                flawed2v2 += temp2v2*twodice[j][k]
+
+fatal3v2 = 1-flawless3v2-flawed3v2 # attacker loses two when rolling 3
+fatal2v2 = 1-flawless2v2-flawed2v2 # attacker loses two when rolling 2
+
+flawless1v2 = 0 # probability of attacker rolling 1 die and winning against 2 dice
+for i in range(5):
+    for j in range(i,5):
+        # prob of defender rolling i and j
+        # factor out division by six (attacker sample space)
+        temp1v2 = float(twodice[i][j])/(total2dice*6)
+        for k in range(j+1,6):
+            flawless1v2 += temp1v2
+
+fatal1v2 = 1-flawless1v2 # probability of attacker rolling 1v2 and losing
+
+flawless3v1 = 0 # probability of attacker rolling 3v1 and winning
+flawless2v1 = 0 # probability of attacker rolling 2v1 and winning
+for i in range(5):
+    temp3v1 = 1.0/(6*total3dice)
+    temp2v1 = 1.0/(6*total2dice)
+    for j in range(6):
+        for k in range(max(j,i+1),6):
+            flawless3v1 += temp3v1*threedice[j][k]
+            flawless2v1 += temp2v1*twodice[j][k]
+
+fatal3v1 = 1-flawless3v1 # probability of attacker rolling 3v1 and losing
+fatal2v1 = 1-flawless2v1 # probabiliyy of attacker rolling 2v1 and losing
+
+
+flawless1v1 = 0 # prob of attacker rolling 1v1 and winning
+for i in range(5):
+    for j in range(i+1,6):
+        flawless1v1 += 1.0/36
+
+fatal1v1 = 1-flawless1v1
+
+# probs[x][y][z] means probability of attacker using x dice vs y dice with outcome z
+# (z=0 is a win, z=1 is a tie, z=2 is a loss)
+probs = [0, [0, [flawless1v1,0.0,fatal1v1], [flawless1v2,0.0,fatal1v2]],
+            [0, [flawless2v1,0.0,fatal2v1], [flawless2v2,flawed2v2,fatal2v2]],
+            [0, [flawless3v1,0.0,fatal3v1], [flawless3v2,flawed3v2,fatal3v2]]]
+bmem = {}
+omem = {}
+tmem = {}
+
+# Finds probability that army of size attackers will
+# defeat army of size defenders with at least minleft troops left.
+# Less general than outcomeprob.
+def battleprob(attackers, defenders, minleft=1):
+    if attackers < minleft: return 0.0
+    if defenders == 0: return 1.0
+
+    h = (attackers, defenders, minleft)
+    if h in bmem: return bmem[h]
+
+    val = 0.0
+    if attackers >= 3 and defenders >= 2:
+        val = probs[3][2][0]*battleprob(attackers, defenders-2, minleft) + \
+              probs[3][2][1]*battleprob(attackers-1, defenders-1, minleft) + \
+              probs[3][2][2]*battleprob(attackers-2, defenders, minleft)
+    elif attackers >= 3 and defenders == 1:
+        val = probs[3][1][0] + \
+              probs[3][1][2]*battleprob(attackers-1, defenders, minleft)
+    elif attackers == 2 and defenders >= 2:
+        val = probs[2][2][0]*battleprob(attackers, defenders-2, minleft) + \
+              probs[2][2][1]*battleprob(attackers-1, defenders-1, minleft) + \
+              probs[2][2][2]*battleprob(attackers-2, defenders, minleft)
+    elif attackers == 2 and defenders == 1:
+        val = probs[2][1][0] + \
+              probs[2][1][2]*battleprob(attackers-1, defenders, minleft)
+    elif attackers == 1 and defenders >= 2:
+        val = probs[1][2][0]*battleprob(attackers, defenders-1, minleft)
+    elif attackers == 1 and defenders == 1:
+        val = probs[1][1][0]
+
+    bmem[h] = val
+    return val
+
+# Finds probability that an army of size attackers
+# battling an army of size defenders will result in
+# arem attackers and drem attackers remaining on either side.
+def outcomeprob(attackers, defenders, arem=1, drem=0):
+    if attackers < arem or defenders < drem: return 0.0
+    if defenders == drem:
+        if drem == 0 and attackers != arem: return 0.0
+        if attackers == arem: return 1.0
+
+    h = (attackers, defenders, arem, drem)
+    if h in omem: return omem[h]
+
+    val = 0.0
+    if attackers >= 3 and defenders >= 2:
+        val = probs[3][2][0]*outcomeprob(attackers, defenders-2, arem, drem) + \
+              probs[3][2][1]*outcomeprob(attackers-1, defenders-1, arem, drem) + \
+              probs[3][2][2]*outcomeprob(attackers-2, defenders, arem, drem)
+    elif attackers >= 3 and defenders == 1:
+        val = probs[3][1][0]*outcomeprob(attackers, defenders-1, arem, drem) + \
+              probs[3][1][2]*outcomeprob(attackers-1, defenders, arem, drem)
+    elif attackers == 2 and defenders >= 2:
+        val = probs[2][2][0]*outcomeprob(attackers, defenders-2, arem, drem) + \
+              probs[2][2][1]*outcomeprob(attackers-1, defenders-1, arem, drem) + \
+              probs[2][2][2]*outcomeprob(attackers-2, defenders, arem, drem)
+    elif attackers == 2 and defenders == 1:
+        val = probs[2][1][0]*outcomeprob(attackers, defenders-1, arem, drem) + \
+              probs[2][1][2]*outcomeprob(attackers-1, defenders, arem, drem)
+    elif attackers == 1 and defenders >= 2:
+        val = probs[1][2][0]*outcomeprob(attackers, defenders-1, arem, drem)
+    elif attackers == 1 and defenders == 1:
+        val = probs[1][1][0]*outcomeprob(attackers, defenders-1, arem, drem)
+
+    omem[h] = val
+    return val
+
+# Finds probability of successful tour given:
+# a starting army of size attackers,
+# an array of armies darmies representing the defending armies in the order they will be attacked,
+# which defending army is being attacked (default 0 for the start),
+# the number of troops we want to leave behind at each country (default 1 for each country),
+# number of guys we want to leave behind in each country
+def tourprob(attackers, darmies, tindex=0, fortify=([1]*100)):
+    if tindex == len(darmies): return 1.0
+    if tindex == 0: # reset memoize table
+        global tmem
+        tmem = {}
+
+    h = (attackers, tindex)
+    if h in tmem: return tmem[h]
+
+    army = attackers-fortify[tindex]
+    minremaining = sum(fortify[i] for i in range(tindex+1,len(darmies)+1))
+
+    val = 0.0
+    for i in range(minremaining, army+1):
+        val += outcomeprob(army, darmies[tindex], i)*tourprob(i, darmies, tindex+1, fortify)
+
+    tmem[h] = val
+    return val
+
 # We will store our enemy in the bot state.
 class BotState():
     def __init__(self):
@@ -126,79 +313,6 @@ def handle_redeem_cards(game: Game, bot_state: BotState, query: QueryRedeemCards
     """After the claiming and placing initial troops phases are over, you can redeem any
     cards you have at the start of each turn, or after killing another player."""
 
-    def check_valid(card_set: Tuple[CardModel, CardModel, CardModel]) -> bool:
-        # Get all non-wild cards
-        not_wild = [card for card in card_set if card.symbol != "Wildcard"]
-
-        # Check if all non-wild cards have the same symbol
-        symbol = not_wild[0].symbol
-        all_same = True
-        for card in not_wild[1:]:
-            if card.symbol != symbol:
-                all_same = False
-        if all_same:
-            return True
-        
-        # Check if all non-wild cards have different symbols
-        symbols = []
-        all_different = True
-        for card in not_wild:
-            if card.symbol in symbols:
-                all_different = False
-            else:
-                symbols.append(card.symbol)
-        if all_different:
-            return True
-        
-        # If neither, return False
-        return False
-
-    def get_value_of_set(card_set: Tuple[CardModel, CardModel, CardModel]):
-        # Base value is 0
-        value = 0
-
-        territory_owned = False
-        for card in card_set:
-            # Value decreases by 2 for each wildcard (arbitrary)
-            if card.symbol == "Wildcard":
-                value -= 2
-                continue
-
-            if game.state.territories[card.territory_id].occupier == game.state.me.player_id: # type: ignore
-                if territory_owned:
-                    # Value decreases by 8 for each extra territory owned (arbitrary)
-                    value -= 9
-                else:
-                    # Value increases by 10 if a territory is owned
-                    territory_owned = True
-                    value += 10
-
-        return value
-
-    def redeem_set(cards: list[CardModel]) -> Optional[Tuple[CardModel, CardModel, CardModel]]:
-        card_count: int = len(cards)
-
-        # Return None if <3 cards
-        if card_count < 3:
-            return None
-
-        # Get all combinations of cards
-        combinations: list[Tuple[CardModel, CardModel, CardModel]] = []
-        for i in range(card_count - 2):
-            for j in range(i + 1, card_count - 1):
-                for k in range(j + 1, card_count):
-                    combinations.append((cards[i], cards[j], cards[k]))
-
-        # Remove invalid combinations
-        card_sets = [card_set for card_set in combinations if check_valid(card_set)]
-
-        # Return None if no valid combinations
-        if len(card_sets) == 0:
-            return None
-
-        # Return highest value combination
-        return max(card_sets, key=get_value_of_set)
-
     # We will always redeem the minimum number of card sets we can until the 12th card set has been redeemed.
     # This is just an arbitrary choice to try and save our cards for the late game.
 
@@ -207,7 +321,7 @@ def handle_redeem_cards(game: Game, bot_state: BotState, query: QueryRedeemCards
     cards_remaining = game.state.me.cards.copy()
 
     while len(cards_remaining) >= 5:
-        card_set = redeem_set(cards_remaining)
+        card_set = game.state.get_card_set(cards_remaining)
         # According to the pigeonhole principle, we should always be able to make a set
         # of cards if we have at least 5 cards.
         assert card_set != None
@@ -217,11 +331,11 @@ def handle_redeem_cards(game: Game, bot_state: BotState, query: QueryRedeemCards
     # Remember we can't redeem any more than the required number of card sets if 
     # we have just eliminated a player.
     if game.state.card_sets_redeemed > 12 and query.cause == "turn_started":
-        card_set = redeem_set(cards_remaining)
+        card_set = game.state.get_card_set(cards_remaining)
         while card_set != None:
             card_sets.append(card_set)
             cards_remaining = [card for card in cards_remaining if card not in card_set]
-            card_set = redeem_set(cards_remaining)
+            card_set = game.state.get_card_set(cards_remaining)
 
     return game.move_redeem_cards(query, [(x[0].card_id, x[1].card_id, x[2].card_id) for x in card_sets])
 
@@ -290,11 +404,22 @@ def handle_attack(game: Game, bot_state: BotState, query: QueryAttack) -> Union[
         for candidate_target in territories:
             candidate_attackers = sorted(list(set(game.state.map.get_adjacent_to(candidate_target)) & set(my_territories)), key=lambda x: game.state.territories[x].troops, reverse=True)
             for candidate_attacker in candidate_attackers:
-                if game.state.territories[candidate_attacker].troops > 1:
+                my_troops = game.state.territories[candidate_attacker].troops
+                target_troops = game.state.territories[candidate_target].troops
+                # For smaller armies, calculate out our odds or winning
+                if my_troops <= 100 and target_troops <= 100 and my_troops > 1:
+                    if tourprob(my_troops, [target_troops]) > 0.5:
+                        return game.move_attack(query, candidate_attacker, candidate_target, min(3, game.state.territories[candidate_attacker].troops - 1))
+                
+                # Otherwise Unless there's a difference of over 15, we're more likely to win, so hit it
+                elif my_troops - target_troops > 15:
                     return game.move_attack(query, candidate_attacker, candidate_target, min(3, game.state.territories[candidate_attacker].troops - 1))
 
-
-    if len(game.state.recording) < 4000:        
+    if len(game.state.recording) < 4000:
+        # We will pick the player with the weakest territory bordering us, and make them our enemy.
+        weakest_territory = min(bordering_territories, key=lambda x: game.state.territories[x].troops)
+        bot_state.enemy = game.state.territories[weakest_territory].occupier
+        
         # Get all territories owned by opponents
         all_territories = [y.territory_id for y in game.state.territories.values()]
         enemy_territories = set(all_territories).difference(my_territories)
@@ -323,9 +448,13 @@ def handle_troops_after_attack(game: Game, bot_state: BotState, query: QueryTroo
     # which territory was the attacking territory.
     record_attack = cast(RecordAttack, game.state.recording[query.record_attack_id])
     move_attack = cast(MoveAttack, game.state.recording[record_attack.move_attack_id])
+    conquered_territory = game.state.territories[move_attack.defending_territory]
+    attacking_territory = game.state.territories[move_attack.attacking_territory]
 
-    # We will always move the maximum number of troops we can.
-    return game.move_troops_after_attack(query, game.state.territories[move_attack.attacking_territory].troops - 1)
+    # Only move te max number of troops if the attacking territory was a border
+    is_border = len(set(game.state.map.get_adjacent_to(conquered_territory) - set(territories))) != 0 
+    if is_border: 
+        return game.move_troops_after_attack(query, game.state.territories[move_attack.attacking_territory].troops - 1)
 
 
 def handle_defend(game: Game, bot_state: BotState, query: QueryDefend) -> MoveDefend:
@@ -346,8 +475,6 @@ def handle_defend(game: Game, bot_state: BotState, query: QueryDefend) -> MoveDe
 def handle_fortify(game: Game, bot_state: BotState, query: QueryFortify) -> Union[MoveFortify, MoveFortifyPass]:
     """At the end of your turn, after you have finished attacking, you may move a number of troops between
     any two of your territories (they must be adjacent)."""
-
-
     # We will always fortify towards the most powerful player (player with most troops on the map) to defend against them.
     my_territories = game.state.get_territories_owned_by(game.state.me.player_id)
     total_troops_per_player = {}
@@ -364,9 +491,10 @@ def handle_fortify(game: Game, bot_state: BotState, query: QueryFortify) -> Unio
     # and any of the most powerful player's territories and fortify along that path.
     candidate_territories = game.state.get_all_border_territories(my_territories)
     most_troops_territory = max(candidate_territories, key=lambda x: game.state.territories[x].troops)
+    weakest_borders = sorted(candidate_territories, key= lambda x: game.state.territories[x].troops)
 
-    # To find the shortest path, we will use a custom function.
-    shortest_path = find_shortest_path_from_vertex_to_set(game, most_troops_territory, set(game.state.get_territories_owned_by(most_powerful_player)))
+    # Fortify towards the weakest border 
+    shortest_path = find_shortest_path_from_vertex_to_set(game, most_troops_territory, set(weakest_borders))
     # We will move our troops along this path (we can only move one step, and we have to leave one troop behind).
     # We have to check that we can move any troops though, if we can't then we will pass our turn.
     if len(shortest_path) > 0 and game.state.territories[most_troops_territory].troops > 1:
