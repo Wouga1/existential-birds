@@ -304,13 +304,8 @@ def handle_attack(game: Game, bot_state: BotState, query: QueryAttack) -> Union[
                 my_troops = game.state.territories[candidate_attacker].troops
                 target_troops = game.state.territories[candidate_target].troops
                 # For smaller armies, calculate out our odds or winning
-                if my_troops <= 100 and target_troops <= 100 and my_troops > 1:
-                    if tourprob(my_troops, [target_troops]) > 0.5:
+                if calculate_win_rate(my_troops, target_troops) > 0.5:
                         return game.move_attack(query, candidate_attacker, candidate_target, min(3, game.state.territories[candidate_attacker].troops - 1))
-                
-                # Otherwise Unless there's a difference of over 15, we're more likely to win, so hit it
-                elif my_troops - target_troops > 15:
-                    return game.move_attack(query, candidate_attacker, candidate_target, min(3, game.state.territories[candidate_attacker].troops - 1))
 
     if len(game.state.recording) < 4000:
         # We will pick the player with the weakest territory bordering us, and make them our enemy.
