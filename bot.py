@@ -250,6 +250,9 @@ def handle_distribute_troops(game: Game, bot_state: BotState, query: QueryDistri
         game.state.get_territories_owned_by(game.state.me.player_id)
     )
 
+    # Track all the continents 
+    print(game.state.map._continents)
+
     # We need to remember we have to place our matching territory bonus
     # if we have one.
     if len(game.state.me.must_place_territory_bonus) != 0:
@@ -344,9 +347,10 @@ def handle_troops_after_attack(game: Game, bot_state: BotState, query: QueryTroo
     attacking_territory = game.state.territories[move_attack.attacking_territory]
 
     # Only move the max number of troops if the attacking territory was a border
-    is_border = len(set(game.state.map.get_adjacent_to(conquered_territory)) - set(game.state.territories)) != 0 
+    is_border = len(set(game.state.map.get_adjacent_to(conquered_territory)) - set(game.state.get_territories_owned_by(game.state.me.player_id)))
     if is_border: 
-        return game.move_troops_after_attack(query, attacking_territory.troops - 1)
+        return game.move_troops_after_attack(query, game.state.territories[move_attack.attacking_territory].troops - 1)
+
     else: 
         return game.move_troops_after_attack(query, move_attack.attacking_troops)
 
