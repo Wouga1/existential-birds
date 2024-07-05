@@ -184,7 +184,7 @@ def handle_claim_territory(game: Game, bot_state: BotState, query: QueryClaimTer
     
     # Or if there are no such territories, we will pick just an unclaimed one with the greatest number of adjacent unclaimed territories.
     else:
-        selected_territory = sorted(unclaimed_territories, key=lambda x: len([territory for territory in game.state.map.get_adjacent_to(x) if game.state.get_territories_owned_by(None)]), reverse=True)[0]
+        selected_territory = sorted(unclaimed_territories, key=lambda x: len([territory for territory in game.state.map.get_adjacent_to(x) if territory in game.state.get_territories_owned_by(None)]), reverse=True)[0]
 
     return game.move_claim_territory(query, selected_territory)
 
