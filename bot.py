@@ -340,13 +340,16 @@ def handle_troops_after_attack(game: Game, bot_state: BotState, query: QueryTroo
     # which territory was the attacking territory.
     record_attack = cast(RecordAttack, game.state.recording[query.record_attack_id])
     move_attack = cast(MoveAttack, game.state.recording[record_attack.move_attack_id])
-    conquered_territory = game.state.territories[move_attack.defending_territory]
+    conquered_territory = move_attack.defending_territory
     attacking_territory = game.state.territories[move_attack.attacking_territory]
 
-    # Only move te max number of troops if the attacking territory was a border
-    is_border = len(set(game.state.map.get_adjacent_to(conquered_territory) - set(territories))) != 0 
+    # Only move the max number of troops if the attacking territory was a border
+    is_border = len(set(game.state.map.get_adjacent_to(conquered_territory)) - set(game.state.territories)) != 0 
     if is_border: 
         return game.move_troops_after_attack(query, game.state.territories[move_attack.attacking_territory].troops - 1)
+
+    else: 
+        return game.move_troops_after_attack(query, move_attack.attacking_troops)
 
 
 def handle_defend(game: Game, bot_state: BotState, query: QueryDefend) -> MoveDefend:
