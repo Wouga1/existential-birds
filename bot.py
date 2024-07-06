@@ -30,6 +30,10 @@ memorised_win_rates = {}
 # attackers: number of attackers
 # defenders: number of defenders
 def calculate_win_rate(attackers, defenders):
+    # Don't calculate if a value is over 300
+    if attackers > 300 or defenders > 300:
+        return 0.75 if attackers > defenders else 0.25
+
     # Return memorised values
     key = f"{attackers},{defenders}"
     if key in memorised_win_rates:
