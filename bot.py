@@ -225,9 +225,8 @@ def handle_redeem_cards(game: Game, bot_state: BotState, query: QueryRedeemCards
         card_sets.append(card_set)
         cards_remaining = [card for card in cards_remaining if card not in card_set]
 
-    # Remember we can't redeem any more than the required number of card sets if 
-    # we have just eliminated a player.
-    if game.state.card_sets_redeemed > 12 and query.cause == "turn_started":
+    # Redeem card whenever we can
+    if query.cause == "turn_started":
         card_set = game.state.get_card_set(cards_remaining)
         while card_set != None:
             card_sets.append(card_set)
@@ -249,9 +248,6 @@ def handle_distribute_troops(game: Game, bot_state: BotState, query: QueryDistri
     border_territories = game.state.get_all_border_territories(
         game.state.get_territories_owned_by(game.state.me.player_id)
     )
-
-    # Track all the continents 
-    print(game.state.map._continents)
 
     # We need to remember we have to place our matching territory bonus
     # if we have one.
@@ -297,6 +293,42 @@ def handle_attack(game: Game, bot_state: BotState, query: QueryAttack) -> Union[
     # We will attack someone.
     my_territories = game.state.get_territories_owned_by(game.state.me.player_id)
     bordering_territories = game.state.get_all_adjacent_territories(my_territories)
+    continents = game.state.map._continents
+    uncontested_continents = [continent for continent in continents.keys() 
+    if len([territory for territory in continents[continent] if game.state.territories[territory].occupier == game.state.me.player_id or game.state.territories[territory].occupier == None]) != 0]
+
+    all_enemy_territories = [game.state.get_territories_owned_by(player) for player in game.state.players.keys() if player != game.state.me.player_id]
+    all_enemies = dict([(player, game.state.get_territories_owned_by(player)) for player in game.state.players.keys() if player != game.state.me.player_id])
+
+    print(all_enemies)
+    def can_eliminate(territories: list[int]) -> bool:
+        targetable_territories = []
+        # Check if our border territories can target is in their territory list
+        # Recursive function that checks connectivity of locations
+        def recursive_target(territory):
+            if territory in targetable_territories:
+                return 
+
+            targetable_territories.append(territory)
+            for connected in game.state.map.get_adjacent_to(territory):
+                recursive_target(connected)
+
+        for bordering_territory in bordering_territories:
+            adjacents = game.state.map.get_adjacent_to(bordering_territory)
+            # These are the starting points for attack.
+            targetable_territories += [targetable for targetable in adjacents if targetable in territories]
+            targetable_territories = list(set(targetable_territories))
+            for targetables in targetable_territories:
+                recursive_target(targetables)
+
+        print(targetable_territories)
+        if len(targetable_territories) == len(territories): 
+            return True
+        
+        return False
+
+    print([can_eliminate(enemy_territories) for enemy_territories in all_enemy_territories])
+
 
     def attack_weakest(territories: list[int]) -> Optional[MoveAttack]:
         # We will attack the weakest territory from the list.
