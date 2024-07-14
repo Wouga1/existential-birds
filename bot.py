@@ -30,6 +30,10 @@ memorised_win_rates = {}
 # attackers: number of attackers
 # defenders: number of defenders
 def calculate_win_rate(attackers, defenders):
+    # Don't calculate if a value is over 300
+    if attackers > 300 or defenders > 300:
+        return 0.75 if attackers > defenders else 0.25
+
     # Return memorised values
     key = f"{attackers},{defenders}"
     if key in memorised_win_rates:
@@ -113,8 +117,17 @@ def calculate_outcome_chances(attackers, defenders):
 # We will store our enemy in the bot state.
 class BotState():
     def __init__(self):
-        self.enemy: Optional[int] = None
+        self.remaining_claims = -1
 
+# Dictionary of what territories are in each continent
+continents = {
+        "AF": (32, 33, 34, 35, 36, 37),
+        "SA": (28, 29, 30, 31),
+        "AU": (38, 39, 40, 41),
+        "NA": (0, 1, 2, 3, 4, 5, 6, 7, 8),
+        "EU": (9, 10, 11, 12, 13, 14, 15),
+        "AS": (16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27)
+    }
 
 def main():
     
@@ -164,27 +177,88 @@ def handle_claim_territory(game: Game, bot_state: BotState, query: QueryClaimTer
     """At the start of the game, you can claim a single unclaimed territory every turn 
     until all the territories have been claimed by players."""
 
+    # If first time, determine how many territories we can claim total
+    if bot_state.remaining_claims == -1:
+        bot_state.remaining_claims = 9 if game.state.me.player_id in game.state.turn_order[:2] else 8
+
     unclaimed_territories = game.state.get_territories_owned_by(None)
     my_territories = game.state.get_territories_owned_by(game.state.me.player_id)
+    me = game.state.me.player_id
 
-    # We will try to always pick new territories that are next to ones that we own,
-    # or a random one if that isn't possible.
-    adjacent_territories = game.state.get_all_adjacent_territories(my_territories)
-
-    # We can only pick from territories that are unclaimed and adjacent to us.
-    available = list(set(unclaimed_territories) & set(adjacent_territories))
-    if len(available) != 0:
-
-        # We will pick the one with the most connections to our territories
-        # this should make our territories clustered together a little bit.
-        def count_adjacent_friendly(x: int) -> int:
-            return len(set(my_territories) & set(game.state.map.get_adjacent_to(x)))
-
-        selected_territory = sorted(available, key=lambda x: count_adjacent_friendly(x), reverse=True)[0]
     
-    # Or if there are no such territories, we will pick just an unclaimed one with the greatest number of adjacent unclaimed territories.
-    else:
-        selected_territory = sorted(unclaimed_territories, key=lambda x: len([territory for territory in game.state.map.get_adjacent_to(x) if territory in game.state.get_territories_owned_by(None)]), reverse=True)[0]
+    uncontested_continents = [] # Continents we have a territory in that no other players have territories in (but we do not fully control)
+    empty_continents = [] # Continents that nobody has
+    influenced_continents = [] # Continents that we have a territory in (and have at least one free territory)
+    for continent in continents.keys():
+        total_territories = len(continents[continent])
+        our_territories = len([territory for territory in continents[continent] if game.state.territories[territory].occupier == me])
+        free_territories = len([territory for territory in continents[continent] if game.state.territories[territory].occupier == None])
+        if total_territories - free_territories == 0:
+            # Nobody has a territory here
+            empty_continents.append(continent)
+            continue
+        if total_territories - our_territories == 0:
+            # We already have this continent
+            continue
+        if total_territories - our_territories - free_territories == 0:
+            # Nobody else has contested this continent
+            uncontested_continents.append(continent)
+        if our_territories > 1 and free_territories > 1:
+            # We have at least 1 territory
+            influenced_continents.append(continent)
+
+    # We will look for any continents that only we have territories in
+    if len(uncontested_continents) > 0:
+        # Sort by (number of territories in continent - number of territories we own in continent)
+        # This finds the continent we need the least tiles to claim
+        uncontested_continents.sort(key = lambda x: len(continents[x]) - len([territory for territory in continents[x] if game.state.territories[territory].occupier == me]))
+        chosen_continent = uncontested_continents[0]
+
+        # Find all unclaimed territories in that continent
+        unclaimed_in_continent = [territory for territory in continents[chosen_continent] if territory in unclaimed_territories]
+
+        # Sort by how many adjacent territories we own
+        # This lets us find the territory we have the most adjacent territories to
+        unclaimed_in_continent.sort(key = lambda x: len([territory for territory in game.state.get_all_adjacent_territories([x]) if game.state.territories[territory].occupier == me]), reverse=True)
+        to_claim = unclaimed_in_continent[0]
+
+        return game.move_claim_territory(query, to_claim)
+
+    # We will look for any continents that nobody has territories in
+    if len(empty_continents) > 0:
+        # Grab a territory in that empty continent
+        chosen_continent = empty_continents[0]
+
+        # Find all unclaimed territories in that continent
+        unclaimed_in_continent = [territory for territory in continents[chosen_continent]]
+
+        # Sort by how many adjacent territories we own
+        # This lets us find the territory we have the most adjacent territories to
+        unclaimed_in_continent.sort(key = lambda x: len([territory for territory in game.state.get_all_adjacent_territories([x]) if game.state.territories[territory].occupier == me]), reverse=True)
+        to_claim = unclaimed_in_continent[0]
+
+        return game.move_claim_territory(query, to_claim)
+
+    # We will expand our easiest to claim continent
+    if len(influenced_continents) > 0:
+        # Sort by least enemy territories
+        # This finds the continent with the least enemies
+        enemies = [player for player in game.state.players.keys() if player != me]
+        influenced_continents.sort(key = lambda x: len([territory for territory in continents[x] if game.state.territories[territory].occupier in enemies]))
+        chosen_continent = influenced_continents[0]
+
+        # Find all unclaimed territories in that continent
+        unclaimed_in_continent = [territory for territory in continents[chosen_continent] if territory in unclaimed_territories]
+
+        # Sort by how many adjacent territories we own
+        # This lets us find the territory we have the most adjacent territories to
+        unclaimed_in_continent.sort(key = lambda x: len([territory for territory in game.state.get_all_adjacent_territories([x]) if game.state.territories[territory].occupier == me]), reverse=True)
+        to_claim = unclaimed_in_continent[0]
+
+        return game.move_claim_territory(query, to_claim)
+    
+    # If there are no such territories, we will pick just an unclaimed one with the greatest number of adjacent unclaimed territories.
+    selected_territory = sorted(unclaimed_territories, key=lambda x: len([territory for territory in game.state.map.get_adjacent_to(x) if territory in game.state.get_territories_owned_by(None)]), reverse=True)[0]
 
     return game.move_claim_territory(query, selected_territory)
 
@@ -345,7 +419,7 @@ def handle_attack(game: Game, bot_state: BotState, query: QueryAttack) -> Union[
     if len(game.state.recording) < 4000:
         # We will pick the player with the weakest territory bordering us, and make them our enemy.
         weakest_territory = min(bordering_territories, key=lambda x: game.state.territories[x].troops)
-        bot_state.enemy = game.state.territories[weakest_territory].occupier
+        #bot_state.enemy = game.state.territories[weakest_territory].occupier
         
         # Get all territories owned by opponents
         all_territories = [y.territory_id for y in game.state.territories.values()]
