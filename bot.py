@@ -385,7 +385,7 @@ def handle_attack(game: Game, bot_state: BotState, query: QueryAttack) -> Union[
                     if calculate_win_rate(my_troops, target_troops) > 0.5:
                             return game.move_attack(query, candidate_attacker, candidate_target, min(3, game.state.territories[candidate_attacker].troops - 1))
 
-    def can_eliminate(territories: list[int]) -> bool:
+    def can_eliminate(territories: list[int]) -> Optional[bool]:
         targetable_territories = []
         # Check if our border territories can target is in their territory list
         # Recursive function that checks connectivity of locations
@@ -494,11 +494,11 @@ def handle_fortify(game: Game, bot_state: BotState, query: QueryFortify) -> Unio
     most_troops_territory = max(candidate_territories, key=lambda x: game.state.territories[x].troops)
     weakest_borders = []
     for my_spot in my_border_territories:
-        bordering_territories = game.state.get_all_adjacent_territories(my_spot)
+        bordering_territories = game.state.get_all_adjacent_territories([my_spot])
         enemy_territories = [enemy for enemy in bordering_territories if enemy not in our_territories]
         my_troops = game.state.territories[my_spot].troops
         enemy_troops = 0
-        for i in range(len(enemy_territories))
+        for i in range(len(enemy_territories)):
             enemy_troops+= game.state.territories[enemy_territories[i]].troops
         #enemy fail rate calc
         if calculate_win_rate(enemy_troops, my_troops) > 0.3:
