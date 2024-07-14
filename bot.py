@@ -219,7 +219,7 @@ def handle_claim_territory(game: Game, bot_state: BotState, query: QueryClaimTer
 
         # Sort by how many adjacent territories we own
         # This lets us find the territory we have the most adjacent territories to
-        unclaimed_in_continent.sort(key = lambda x: len([territory for territory in game.state.get_all_adjacent_territories([x]) if game.state.territories[territory].occupier == me]))
+        unclaimed_in_continent.sort(key = lambda x: len([territory for territory in game.state.get_all_adjacent_territories([x]) if game.state.territories[territory].occupier == me]), reverse=True)
         to_claim = unclaimed_in_continent[0]
 
         return game.move_claim_territory(query, to_claim)
@@ -228,7 +228,14 @@ def handle_claim_territory(game: Game, bot_state: BotState, query: QueryClaimTer
     if len(empty_continents) > 0:
         # Grab a territory in that empty continent
         chosen_continent = empty_continents[0]
-        to_claim = continents[chosen_continent][0]
+
+        # Find all unclaimed territories in that continent
+        unclaimed_in_continent = [territory for territory in continents[chosen_continent]]
+
+        # Sort by how many adjacent territories we own
+        # This lets us find the territory we have the most adjacent territories to
+        unclaimed_in_continent.sort(key = lambda x: len([territory for territory in game.state.get_all_adjacent_territories([x]) if game.state.territories[territory].occupier == me]), reverse=True)
+        to_claim = unclaimed_in_continent[0]
 
         return game.move_claim_territory(query, to_claim)
 
@@ -245,7 +252,7 @@ def handle_claim_territory(game: Game, bot_state: BotState, query: QueryClaimTer
 
         # Sort by how many adjacent territories we own
         # This lets us find the territory we have the most adjacent territories to
-        unclaimed_in_continent.sort(key = lambda x: len([territory for territory in game.state.get_all_adjacent_territories([x]) if game.state.territories[territory].occupier == me]))
+        unclaimed_in_continent.sort(key = lambda x: len([territory for territory in game.state.get_all_adjacent_territories([x]) if game.state.territories[territory].occupier == me]), reverse=True)
         to_claim = unclaimed_in_continent[0]
 
         return game.move_claim_territory(query, to_claim)
