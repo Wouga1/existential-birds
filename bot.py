@@ -488,15 +488,31 @@ def handle_fortify(game: Game, bot_state: BotState, query: QueryFortify) -> Unio
     most_powerful_player = max(total_troops_per_player.items(), key=lambda x: x[1])[0]
 
     # If we are the most powerful, we will pass.
-    if most_powerful_player == game.state.me.player_id:
-        return game.move_fortify_pass(query)
+    # if most_powerful_player == game.state.me.player_id:
+    #     return game.move_fortify_pass(query)
     
     # Otherwise we will find the shortest path between our territory with the most troops
     # and any of the most powerful player's territories and fortify along that path.
-    candidate_territories = game.state.get_all_border_territories(my_territories)
-    most_troops_territory = max(candidate_territories, key=lambda x: game.state.territories[x].troops)
-    weakest_borders = sorted(candidate_territories, key= lambda x: game.state.territories[x].troops)
 
+    #our territories
+    our_territories =  game.state.get_territories_owned_by(player.player_id)
+
+    #all terroritiories bordering my spot
+    candidate_territories = game.state.get_all_border_territories(my_territories)
+
+    my_border_territories = [mine for mine in candidate_territories if mine in our_territories]
+    most_troops_territory = max(candidate_territories, key=lambda x: game.state.territories[x].troops)
+    weakest_borders = []
+    for my_spot in my_border_territories:
+        bordering_territories = game.state.get_all_adjacent_territories(my_spot)
+        enemy_territories = [enemy for enemy in bordering_territories if enemy not in our_territories]
+        my_troops = game.state.territories[my_spot].troops
+        enemy_troops = 0
+        for i in range(len(enemy_territories))
+            enemy_troops+= game.state.territories[enemy_territories[i]].troops
+        #enemy fail rate calc
+        if calculate_win_rate(enemy_troops, my_troops) > 0.3:
+            weakest_borders.append(my_spot)
     # Fortify towards the weakest border 
     shortest_path = find_shortest_path_from_vertex_to_set(game, most_troops_territory, set(weakest_borders))
     # We will move our troops along this path (we can only move one step, and we have to leave one troop behind).
